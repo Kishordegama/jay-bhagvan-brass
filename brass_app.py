@@ -18,11 +18,13 @@ if not st.session_state['login_done']:
 else:
     # ૨. ગૂગલ શીટ કનેક્શન
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read()
+    
+    # શીટ વાંચતી વખતે વધારાના ખાલી ખાના કાઢી નાખવા
+    df = conn.read().dropna(axis=1, how='all')
 
     st.title("🙏 જય ભગવાન બ્રાસ મેનેજમેન્ટ")
 
-    # ૩. નવી એન્ટ્રી (આને આપણે નાની કરી દીધી છે)
+    # ૩. નવી એન્ટ્રી
     with st.expander("➕ નવી એન્ટ્રી ઉમેરો"):
         name = st.text_input("પાર્ટીનું નામ:")
         scrap = st.selectbox("પ્રકાર:", ["Honey", "Mixed", "Heavy", "Turning", "Other"])
@@ -34,43 +36,43 @@ else:
             net = gross - less
             total = net * price
             date = datetime.now().strftime("%d-%m-%Y %H:%M")
-            new_row = pd.DataFrame([[date, name, scrap, gross, less, net, price, total]], columns=df.columns)
+            
+            # ખાનાના નામ ચોક્કસ કરવા (તમારી શીટ મુજબ)
+            cols = ["તારીખ", "પાર્ટીનું નામ", "ભંગાર પ્રકાર", "કુલ વજન (Kg)", "લેસ (Kg)", "ચોખ્ખું વજન (Kg)", "ભાવ", "કુલ રકમ"]
+            
+            new_row = pd.DataFrame([[date, name, scrap, gross, less, net, price, total]], columns=cols)
+            
+            # ડેટા ભેગો કરીને ગૂગલ શીટમાં મોકલવો
             updated_df = pd.concat([df, new_row], ignore_index=True)
             conn.update(data=updated_df)
-            st.success("સેવ થઈ ગયું!")
+            st.success("હિસાબ ગૂગલ શીટમાં સેવ થઈ ગયો! ✨")
             st.rerun()
 
-    # ૪. ક્લાયન્ટ વાઈઝ હિસાબ (તમારો મુખ્ય ઉકેલ)
+    # ૪. પાર્ટી મુજબ ફિલ્ટર
     st.divider()
-    st.subheader("🔍 પાર્ટી મુજબ હિસાબ અને બિલ")
-    
-    # બધી પાર્ટીના નામનું લિસ્ટ
-    party_list = ["બધી પાર્ટી"] + sorted(list(df["પાર્ટીનું નામ"].unique()))
-    selected_party = st.selectbox("પાર્ટી પસંદ કરો:", party_list)
+    if not df.empty:
+        party_list = ["બધી પાર્ટી"] + sorted(list(df["પાર્ટીનું નામ"].dropna().unique()))
+        selected_party = st.selectbox("પાર્ટી પસંદ કરો:", party_list)
 
-    if selected_party == "બધી પાર્ટી":
-        display_df = df
-        st.write("અત્યારે બધી પાર્ટીનો હિસાબ દેખાય છે.")
-    else:
-        display_df = df[df["પાર્ટીનું નામ"] == selected_party]
-        
-        # ૫. સરવાળો (Total) બતાવવો
-        total_weight = display_df["ચોખ્ખું વજન (Kg)"].sum()
-        total_amount = display_df["કુલ રકમ"].sum()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("કુલ ચોખ્ખું વજન (Kg)", f"{total_weight:,.2f}")
-        with col2:
-            st.metric("કુલ બાકી રકમ (₹)", f"₹{total_amount:,.2f}")
-
-    # ટેબલ બતાવવું
-    st.dataframe(display_df, use_container_width=True)
-
-    # ૬. વોટ્સએપ પર મોકલવા માટે
-    if selected_party != "બધી પાર્ટી" and not display_df.empty:
-        msg = f"જય ભગવાન બ્રાસ\n---\nપાર્ટી: {selected_party}\nકુલ વજન: {total_weight} Kg\nકુલ રકમ: ₹{total_amount}\n---"
-        wa_link = f"https://wa.me/?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
-        st.markdown(f"[📲 {selected_party} ને વોટ્સએપ પર હિસાબ મોકલો]({wa_link})")
+        if selected_party == "બધી પાર્ટી":
+            display_df = df
+        else:
+            display_df = df[df["પાર્ટીનું નામ"] == selected_party]
             
-           
+            # ટોટલ બતાવવું
+            total_weight = display_df["ચોખ્ખું વજન (Kg)"].sum()
+            total_amount = display_df["કુલ રકમ"].sum()
+            
+            c1, c2 = st.columns(2)
+            c1.metric("કુલ વજન (Kg)", f"{total_weight:,.2f}")
+            c2.metric("કુલ રકમ (₹)", f"₹{total_amount:,.2f}")
+            
+            # WhatsApp બટન
+            msg = f"જય ભગવાન બ્રાસ\n---\nપાર્ટી: {selected_party}\nકુલ વજન: {total_weight} Kg\nકુલ રકમ: ₹{total_amount}"
+            wa_link = f"https://wa.me/?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
+            st.markdown(f"[📲 {selected_party} ને વોટ્સએપ મોકલો]({wa_link})")
+
+        st.dataframe(display_df, use_container_width=True)
+    else:
+        st.info("હજી સુધી કોઈ હિસાબ લખાયો નથી.")
+    
