@@ -23,7 +23,7 @@ else:
     # ૩. ગૂગલ શીટ કનેક્શન
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # શીટમાંથી ડેટા વાંચવો (ખાલી લાઈનો કાઢી નાખવી)
+        # શીટમાંથી ડેટા વાંચવો (ખાલી લાઈનો અને કૉલમ્સ કાઢી નાખવા)
         df = conn.read().dropna(axis=0, how='all').dropna(axis=1, how='all')
     except Exception as e:
         st.error("ગૂગલ શીટ સાથે જોડાવવામાં તકલીફ છે. મહેરબાની કરીને Secrets ચેક કરો.")
@@ -49,7 +49,7 @@ else:
                 total = net * price
                 date = datetime.now().strftime("%d-%m-%Y %H:%M")
                 
-                # તમારી શીટ મુજબ હેડિંગ્સ
+                # શીટના હેડિંગ મુજબ ડેટા
                 cols = ["તારીખ", "પાર્ટીનું નામ", "ભંગાર પ્રકાર", "કુલ વજન (Kg)", "લેસ (Kg)", "ચોખ્ખું વજન (Kg)", "ભાવ", "કુલ રકમ"]
                 new_row = pd.DataFrame([[date, name, scrap, gross, less, net, price, total]], columns=cols)
                 
@@ -64,9 +64,9 @@ else:
     # ૫. ફિલ્ટર અને હિસાબ (ક્લાયન્ટ માટે)
     st.divider()
     if not df.empty:
-        st.subheader("🔍 પાર્ટી મુજબ હિસાબ")
+        st.subheader("🔍 પાર્ટી મુજબ હિસાબ અને બિલ")
         
-        # પાર્ટી લિસ્ટ
+        # બધી પાર્ટીના નામનું લિસ્ટ
         clean_parties = [x for x in df["પાર્ટીનું નામ"].unique() if str(x) != 'nan']
         party_list = ["બધી પાર્ટી"] + sorted(clean_parties)
         selected_party = st.selectbox("પાર્ટી પસંદ કરો:", party_list)
@@ -76,10 +76,11 @@ else:
         else:
             display_df = df[df["પાર્ટીનું નામ"] == selected_party]
             
-            # ટોટલ બતાવવું
+            # ટોટલની ગણતરી
             total_weight = display_df["ચોખ્ખું વજન (Kg)"].sum()
             total_amount = display_df["કુલ રકમ"].sum()
             
+            # સ્ક્રીન પર ટોટલ બતાવવું
             c1, c2 = st.columns(2)
             c1.metric("કુલ વજન (Kg)", f"{total_weight:,.2f}")
             c2.metric("કુલ બાકી રકમ (₹)", f"₹{total_amount:,.2f}")
@@ -89,9 +90,10 @@ else:
             wa_link = f"https://wa.me/?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
             st.markdown(f"[📲 {selected_party} ને WhatsApp મોકલો]({wa_link})")
 
+        # મુખ્ય ટેબલ
         st.dataframe(display_df, use_container_width=True)
     else:
-        st.info("હજી કોઈ ડેટા નથી.")
+        st.info("હજી કોઈ ડેટા નથી. નવી એન્ટ્રી કરો.")
 
     if st.sidebar.button("Logout"):
         st.session_state['login_done'] = False
