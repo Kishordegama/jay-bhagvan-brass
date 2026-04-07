@@ -3,7 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# ૧. પાસવર્ડ સેટિંગ
+# ૧. પાસવર્ડ
 if 'login_done' not in st.session_state:
     st.session_state['login_done'] = False
 
@@ -16,11 +16,13 @@ if not st.session_state['login_done']:
             st.rerun()
         else: st.error("ખોટો પાસવર્ડ!")
 else:
-    # ૨. ગૂગલ શીટ કનેક્શન
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    
-    # શીટ વાંચતી વખતે વધારાના ખાલી ખાના કાઢી નાખવા
-    df = conn.read().dropna(axis=1, how='all')
+    # ૨. કનેક્શન (અહીં આપણે એરર હેન્ડલિંગ ઉમેર્યું છે)
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read().dropna(axis=0, how='all').dropna(axis=1, how='all')
+    except Exception as e:
+        st.error("ગૂગલ શીટ સાથે જોડાવવામાં તકલીફ છે. મહેરબાની કરીને સેટિંગ્સ ચેક કરો.")
+        st.stop()
 
     st.title("🙏 જય ભગવાન બ્રાસ મેનેજમેન્ટ")
 
@@ -33,46 +35,43 @@ else:
         price = st.number_input("ભાવ:", min_value=0)
         
         if st.button("📝 સેવ કરો"):
-            net = gross - less
-            total = net * price
-            date = datetime.now().strftime("%d-%m-%Y %H:%M")
-            
-            # ખાનાના નામ ચોક્કસ કરવા (તમારી શીટ મુજબ)
-            cols = ["તારીખ", "પાર્ટીનું નામ", "ભંગાર પ્રકાર", "કુલ વજન (Kg)", "લેસ (Kg)", "ચોખ્ખું વજન (Kg)", "ભાવ", "કુલ રકમ"]
-            
-            new_row = pd.DataFrame([[date, name, scrap, gross, less, net, price, total]], columns=cols)
-            
-            # ડેટા ભેગો કરીને ગૂગલ શીટમાં મોકલવો
-            updated_df = pd.concat([df, new_row], ignore_index=True)
-            conn.update(data=updated_df)
-            st.success("હિસાબ ગૂગલ શીટમાં સેવ થઈ ગયો! ✨")
-            st.rerun()
+            if name:
+                try:
+                    net = gross - less
+                    total = net * price
+                    date = datetime.now().strftime("%d-%m-%Y %H:%M")
+                    
+                    # હેડિંગ્સ તમારી શીટ મુજબ
+                    cols = ["તારીખ", "પાર્ટીનું નામ", "ભંગાર પ્રકાર", "કુલ વજન (Kg)", "લેસ (Kg)", "ચોખ્ખું વજન (Kg)", "ભાવ", "કુલ રકમ"]
+                    new_row = pd.DataFrame([[date, name, scrap, gross, less, net, price, total]], columns=cols)
+                    
+                    updated_df = pd.concat([df, new_row], ignore_index=True)
+                    conn.update(data=updated_df)
+                    st.success("હિસાબ સેવ થઈ ગયો! ✨")
+                    st.rerun()
+                except Exception as err:
+                    st.error("સેવ કરવામાં એરર આવી. ગૂગલ 'ડિજિટલ ચાવી' (Service Account) માંગે છે.")
+                    st.info("જો તમે ડેટા સેવ ના કરી શકતા હોવ, તો અત્યારે જૂની રીતે CSV ડાઉનલોડ કરીને કામ ચલાવો.")
+            else:
+                st.warning("પાર્ટીનું નામ લખવું જરૂરી છે.")
 
-    # ૪. પાર્ટી મુજબ ફિલ્ટર
+    # ૪. ફિલ્ટર અને ડિસ્પ્લે
     st.divider()
     if not df.empty:
-        party_list = ["બધી પાર્ટી"] + sorted(list(df["પાર્ટીનું નામ"].dropna().unique()))
+        # અહીં ખાલી ખાના કાઢીને લિસ્ટ બનાવવું
+        clean_parties = [x for x in df["પાર્ટીનું નામ"].unique() if str(x) != 'nan']
+        party_list = ["બધી પાર્ટી"] + sorted(clean_parties)
         selected_party = st.selectbox("પાર્ટી પસંદ કરો:", party_list)
 
-        if selected_party == "બધી પાર્ટી":
-            display_df = df
-        else:
-            display_df = df[df["પાર્ટીનું નામ"] == selected_party]
+        display_df = df if selected_party == "બધી પાર્ટી" else df[df["પાર્ટીનું નામ"] == selected_party]
+        
+        if selected_party != "બધી પાર્ટી":
+            st.metric("કુલ રકમ", f"₹{display_df['કુલ રકમ'].sum():,.2f}")
             
-            # ટોટલ બતાવવું
-            total_weight = display_df["ચોખ્ખું વજન (Kg)"].sum()
-            total_amount = display_df["કુલ રકમ"].sum()
-            
-            c1, c2 = st.columns(2)
-            c1.metric("કુલ વજન (Kg)", f"{total_weight:,.2f}")
-            c2.metric("કુલ રકમ (₹)", f"₹{total_amount:,.2f}")
-            
-            # WhatsApp બટન
-            msg = f"જય ભગવાન બ્રાસ\n---\nપાર્ટી: {selected_party}\nકુલ વજન: {total_weight} Kg\nકુલ રકમ: ₹{total_amount}"
-            wa_link = f"https://wa.me/?text={msg.replace(' ', '%20').replace('\n', '%0A')}"
-            st.markdown(f"[📲 {selected_party} ને વોટ્સએપ મોકલો]({wa_link})")
-
         st.dataframe(display_df, use_container_width=True)
-    else:
-        st.info("હજી સુધી કોઈ હિસાબ લખાયો નથી.")
     
+    if st.sidebar.button("Logout"):
+        st.session_state['login_done'] = False
+        st.rerun()
+
+   
